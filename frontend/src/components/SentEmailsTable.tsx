@@ -5,9 +5,13 @@ import { EmailTiming } from "./EmailTiming";
 
 interface SentEmailsTableProps {
   emails: Email[];
+  onPreview: (email: Email) => void;
 }
 
-export const SentEmailsTable: React.FC<SentEmailsTableProps> = ({ emails }) => {
+export const SentEmailsTable: React.FC<SentEmailsTableProps> = ({
+  emails,
+  onPreview,
+}) => {
   return (
     <div className="table-card">
       <div className="table-responsive">
@@ -15,7 +19,12 @@ export const SentEmailsTable: React.FC<SentEmailsTableProps> = ({ emails }) => {
           <thead>
             <tr>
               <th style={{ width: "25%" }}>Recipient</th>
-              <th style={{ width: "30%" }}>Campaign Details</th>
+              <th style={{ width: "30%" }}>
+                Message
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "normal", marginTop: "0.25rem" }}>
+                  Click the mail icon to view the message
+                </div>
+              </th>
               <th style={{ width: "35%" }}>Transmission Timeline</th>
               <th style={{ width: "10%" }}>Status</th>
             </tr>
@@ -47,13 +56,29 @@ export const SentEmailsTable: React.FC<SentEmailsTableProps> = ({ emails }) => {
                   </div>
                 </td>
                 <td>
-                  <div className="subject-cell">
-                    <span className="email-subject-text" title={email.subject}>
-                      {email.subject}
-                    </span>
-                    <p className="email-body-preview" title={email.body}>
-                      {email.body}
-                    </p>
+                  <div className="subject-cell-row">
+                    <button
+                      className="btn-preview-trigger"
+                      style={{ color: "#a855f7", marginLeft: 0 }}
+                      onClick={() => onPreview(email)}
+                      title="Preview email"
+                      aria-label="Preview email"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        width="24"
+                        height="24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"
+                        />
+                      </svg>
+                    </button>
                   </div>
                 </td>
                 <td>
