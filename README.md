@@ -1,4 +1,4 @@
-# EmailFlow 📧
+# EmailFlow 
 
 A full-stack email scheduling application built using React, Express, BullMQ, Redis, PostgreSQL, and TypeScript.
 
