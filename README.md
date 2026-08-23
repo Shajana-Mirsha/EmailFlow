@@ -1,145 +1,87 @@
 # EmailFlow 📧
 
-<<<<<<< HEAD
-A full-stack email scheduling application built for the ReachInbox Software Development Intern assignment.
+A full-stack email scheduling application built using React, Express, BullMQ, Redis, PostgreSQL, and TypeScript.
 
 ## Features
 
-- Google OAuth login
-- Schedule emails
-- Upload CSV/TXT email lists
-- View Scheduled and Sent emails
-- Shows scheduled time and actual sent time
-- BullMQ + Redis for background scheduling
+### Backend
+- Schedule emails using BullMQ delayed jobs
 - PostgreSQL for storing email data
+- Redis for persistent job queues
+- Configurable worker concurrency
+- Configurable delay between emails
+- Configurable hourly rate limiting
 - Ethereal Email for testing
 - No cron jobs
+- Scheduled jobs remain persistent after server restarts
 
-## Tech Stack
-
-React + TypeScript | Express + TypeScript | PostgreSQL | Redis | BullMQ | Ethereal Email
-
-## Run the Project
-
-### Start Redis
-
-```bash
-redis-server
-```
-
-### Start Backend
-
-```bash
-=======
-A full-stack email scheduling application.
-
-## Features
-
-**Backend**
-- BullMQ + Redis delayed email scheduling
-- PostgreSQL email storage
-- Persistent jobs after restart
-- Configurable concurrency, delay and hourly rate limit
-- Ethereal SMTP for testing
-- No cron jobs
-
-**Frontend**
+### Frontend
 - Google OAuth login
-- Compose email with CSV/TXT upload
-- Scheduled and Sent email tables
-- Scheduled time, sent time and status
+- Compose and schedule emails
+- Upload CSV/TXT email lists
+- View Scheduled emails
+- View Sent emails
+- Email status and timing details
+- Responsive dashboard
 
 ## Tech Stack
 
 React + TypeScript | Express + TypeScript | PostgreSQL | Redis | BullMQ | Nodemailer | Ethereal Email
 
-## Run
+## Run the Project
 
-Start **Redis** and **PostgreSQL**, then configure the backend `.env` with your database, Redis, Google OAuth and Ethereal SMTP credentials.
+Start Redis and PostgreSQL first. Configure the backend `.env` file with your database, Redis, Google OAuth, and Ethereal SMTP credentials.
+
+### Backend
 
 ```bash
-# Backend
->>>>>>> 80005d6 (Update README)
 cd backend
 npm install
 npm run dev
 ```
 
-<<<<<<< HEAD
-### Start Worker
+### Worker
 
 Open another terminal:
 
 ```bash
-=======
-Open another terminal:
-
-```bash
-# Worker
->>>>>>> 80005d6 (Update README)
 cd backend
 npm run worker
 ```
 
-<<<<<<< HEAD
-### Start Frontend
+### Frontend
 
 Open another terminal:
 
 ```bash
-=======
-Open another terminal:
-
-```bash
-# Frontend
->>>>>>> 80005d6 (Update README)
 cd frontend
 npm install
 npm run dev
 ```
 
-<<<<<<< HEAD
 Open:
 
 ```text
 http://localhost:5173
 ```
-=======
-Open `http://localhost:5173`
->>>>>>> 80005d6 (Update README)
 
 ## How It Works
 
 ```text
-Frontend → Express API → PostgreSQL
-<<<<<<< HEAD
-                     ↓
-               BullMQ + Redis
-                     ↓
-                   Worker
-                     ↓
-               Ethereal Email
+Frontend
+   ↓
+Express API
+   ↓
+PostgreSQL
+   ↓
+BullMQ + Redis
+   ↓
+Worker
+   ↓
+Ethereal SMTP
 ```
 
-Scheduled jobs are stored in Redis using BullMQ, so cron jobs are not used. Email data and status are stored in PostgreSQL.
-
-## Screenshots
-
-_Add project screenshots here._
-
----
-
-Created for the ReachInbox Software Development Intern Assignment.
-=======
-                      ↓
-                BullMQ + Redis
-                      ↓
-                    Worker
-                      ↓
-                 Ethereal SMTP
-```
-
-Emails are stored in PostgreSQL and scheduled as BullMQ delayed jobs. Redis keeps jobs persistent after restarts. The worker uses configurable concurrency and rate limiting; jobs that cannot be sent immediately remain queued for later processing.
+Emails are stored in PostgreSQL and scheduled using BullMQ delayed jobs. Redis keeps queued jobs persistent after server restarts. Worker concurrency, delay between emails, and hourly limits are configurable. When the rate limit is reached, emails remain queued and are processed later.
 
 ## Screenshots
 
@@ -154,4 +96,3 @@ Emails are stored in PostgreSQL and scheduled as BullMQ delayed jobs. Redis keep
 ### Compose Email
 
 ![Compose Email](./screenshots/compose.png)
->>>>>>> 80005d6 (Update README)
