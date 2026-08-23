@@ -80,7 +80,7 @@ export const ComposeEmailModal: React.FC<ComposeEmailModalProps> = ({
       <div className="modal-content-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2 className="modal-title">Compose New Campaign</h2>
+            <h2 className="modal-title">Compose New Email</h2>
             <p className="modal-subtitle">
               Upload your contacts list, design the message, and schedule delivery settings.
             </p>
@@ -149,7 +149,7 @@ export const ComposeEmailModal: React.FC<ComposeEmailModalProps> = ({
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="start-time">Campaign Start Time</label>
+            <label className="form-label" htmlFor="start-time">Start Time</label>
             <input
               id="start-time"
               type="datetime-local"
