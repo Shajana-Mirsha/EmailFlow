@@ -4,9 +4,10 @@
   "description": "EmailFlow backend",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "worker": "tsx watch src/worker.ts"
-  },
+  "dev": "tsx watch src/server.ts",
+  "start": "tsx src/server.ts",
+  "worker": "tsx src/worker.ts"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
