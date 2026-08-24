@@ -29,7 +29,7 @@ function App() {
 
   const fetchUser = async () => {
     try {
-      const response = await fetch("http://localhost:5000/auth/me", {
+      const response = await fetch("https://emailflow-api-zhwz.onrender.com/auth/me", {
         credentials: "include",
       });
 
@@ -50,7 +50,7 @@ function App() {
   const fetchEmails = async (silent: boolean = false) => {
     try {
       if (!silent) setLoadingEmails(true);
-      const response = await fetch("http://localhost:5000/emails");
+      const response = await fetch("https://emailflow-api-zhwz.onrender.com/emails");
       if (!response.ok) {
         throw new Error("Failed to fetch");
       }
@@ -104,12 +104,12 @@ function App() {
   }, [user]);
 
   const loginWithGoogle = () => {
-    window.location.href = "http://localhost:5000/auth/google";
+    window.location.href = "https://emailflow-api-zhwz.onrender.com/auth/google";
   };
 
   const logout = async () => {
     try {
-      await fetch("http://localhost:5000/auth/logout", {
+      await fetch("https://emailflow-api-zhwz.onrender.com/auth/logout", {
         method: "POST",
         credentials: "include",
       });
@@ -131,7 +131,7 @@ function App() {
   }) => {
     try {
       setScheduling(true);
-      const response = await fetch("http://localhost:5000/emails/bulk", {
+      const response = await fetch("https://emailflow-api-zhwz.onrender.com/emails/bulk", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -159,7 +159,7 @@ function App() {
   const cancelEmail = async (id: number) => {
     try {
       setCancellingId(id);
-      const response = await fetch(`http://localhost:5000/emails/${id}`, {
+      const response = await fetch(`https://emailflow-api-zhwz.onrender.com/emails/${id}`, {
         method: "DELETE",
       });
 

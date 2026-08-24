@@ -54,7 +54,7 @@ passport.use(
         process.env.GOOGLE_CLIENT_SECRET as string,
       callbackURL:
         process.env.GOOGLE_CALLBACK_URL ||
-        "http://localhost:5000/auth/google/callback"
+        "https://emailflow-api-zhwz.onrender.com/auth/google/callback"
     },
     async (
       accessToken,
