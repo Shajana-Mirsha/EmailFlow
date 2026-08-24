@@ -354,7 +354,7 @@ function App() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          + Compose New Email
+          Compose New Email
         </button>
       </div>
 

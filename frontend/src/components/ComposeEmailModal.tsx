@@ -88,7 +88,7 @@ export const ComposeEmailModal: React.FC<ComposeEmailModalProps> = ({
       subject,
       body,
       emails: emailList,
-      start_time: startTime,
+      start_time: new Date(startTime).toISOString(),
       delay_between_emails: Number(delayBetweenEmails),
       hourly_limit: Number(hourlyLimit),
     });
