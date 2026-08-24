@@ -11,9 +11,18 @@ dotenv.config();
 
 const app = express();
 
+const FRONTEND_URL =
+  process.env.FRONTEND_URL ||
+  "https://emailflow-k7d4.onrender.com";
+
+const isProduction =
+  process.env.NODE_ENV === "production";
+
+app.set("trust proxy", 1);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: FRONTEND_URL,
     credentials: true
   })
 );
@@ -28,8 +37,9 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: false,
-      httpOnly: true
+      secure: isProduction,
+      httpOnly: true,
+      sameSite: isProduction ? "none" : "lax"
     }
   })
 );
@@ -50,12 +60,15 @@ passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID as string,
+
       clientSecret:
         process.env.GOOGLE_CLIENT_SECRET as string,
+
       callbackURL:
         process.env.GOOGLE_CALLBACK_URL ||
         "https://emailflow-api-zhwz.onrender.com/auth/google/callback"
     },
+
     async (
       accessToken,
       refreshToken,
@@ -84,6 +97,7 @@ app.get("/", (req: Request, res: Response) => {
 
 app.get(
   "/auth/google",
+
   passport.authenticate("google", {
     scope: ["profile", "email"]
   })
@@ -91,19 +105,19 @@ app.get(
 
 app.get(
   "/auth/google/callback",
+
   passport.authenticate("google", {
-    failureRedirect:
-      "http://localhost:5173/login"
+    failureRedirect: `${FRONTEND_URL}/login`
   }),
+
   (req, res) => {
-    res.redirect(
-      "http://localhost:5173/dashboard"
-    );
+    res.redirect(`${FRONTEND_URL}/dashboard`);
   }
 );
 
 app.get(
   "/auth/me",
+
   (req: any, res: Response) => {
     if (!req.user) {
       return res.status(401).json({
@@ -120,6 +134,7 @@ app.get(
 
 app.post(
   "/auth/logout",
+
   (req: any, res: Response) => {
     req.logout((error: any) => {
       if (error) {
@@ -141,6 +156,7 @@ app.post(
 
 app.get(
   "/health",
+
   async (req: Request, res: Response) => {
     try {
       await pool.query("SELECT 1");
@@ -164,6 +180,7 @@ app.get(
 
 app.get(
   "/test-db",
+
   async (req: Request, res: Response) => {
     try {
       const result = await pool.query(
@@ -191,6 +208,7 @@ app.get(
 
 app.post(
   "/emails",
+
   async (req: Request, res: Response) => {
     try {
       const {
@@ -299,6 +317,7 @@ app.post(
 
 app.post(
   "/emails/bulk",
+
   async (req: Request, res: Response) => {
     try {
       const {
@@ -402,8 +421,11 @@ app.post(
               jobDelay,
               0
             ),
+
             jobId: `email-${email.id}`,
+
             attempts: 3,
+
             backoff: {
               type: "exponential",
               delay: 5000
@@ -435,6 +457,7 @@ app.post(
 
 app.get(
   "/emails",
+
   async (req: Request, res: Response) => {
     try {
       const result = await pool.query(
@@ -459,6 +482,7 @@ app.get(
 
 app.get(
   "/emails/scheduled",
+
   async (
     req: Request,
     res: Response
@@ -487,6 +511,7 @@ app.get(
 
 app.get(
   "/emails/sent",
+
   async (
     req: Request,
     res: Response
@@ -515,6 +540,7 @@ app.get(
 
 app.delete(
   "/emails/:id",
+
   async (
     req: Request,
     res: Response
@@ -583,6 +609,6 @@ const PORT =
 
 app.listen(PORT, () => {
   console.log(
-    `Server running on http://localhost:${PORT}`
+    `Server running on port ${PORT}`
   );
 });
