@@ -129,12 +129,12 @@ async function waitForGlobalEmailSpacing() {
   }
 }
 
-const testAccounts = new Map<
+export const testAccounts = new Map<
   string,
   nodemailer.TestAccount
 >();
 
-async function getTransporter(sender: string) {
+export async function getTransporter(sender: string) {
   let account = testAccounts.get(sender);
 
   if (!account) {

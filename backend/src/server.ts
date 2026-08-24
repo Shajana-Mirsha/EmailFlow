@@ -4,10 +4,26 @@ import cors from "cors";
 import session from "express-session";
 import passport from "passport";
 import GoogleStrategy from "passport-google-oauth20";
+import nodemailer from "nodemailer";
 import pool from "./config/db";
 import { emailQueue } from "./queue/emailQueue";
+import { getTransporter } from "./worker";
 
 dotenv.config();
+
+const timeoutPromise = (ms: number) =>
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout")), ms)
+  );
+
+async function runWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  try {
+    return (await Promise.race([promise, timeoutPromise(ms)])) as T;
+  } catch (err: any) {
+    console.warn("Operation timed out or failed (likely Redis is offline):", err.message);
+    return null;
+  }
+}
 
 const app = express();
 
@@ -411,26 +427,26 @@ app.post(
           scheduledTime.getTime() -
           Date.now();
 
-        await emailQueue.add(
-          "send-email",
-          {
-            emailId: email.id
-          },
-          {
-            delay: Math.max(
-              jobDelay,
-              0
-            ),
-
-            jobId: `email-${email.id}`,
-
-            attempts: 3,
-
-            backoff: {
-              type: "exponential",
-              delay: 5000
+        await runWithTimeout(
+          emailQueue.add(
+            "send-email",
+            {
+              emailId: email.id
+            },
+            {
+              delay: Math.max(
+                jobDelay,
+                0
+              ),
+              jobId: `email-${email.id}`,
+              attempts: 3,
+              backoff: {
+                type: "exponential",
+                delay: 5000
+              }
             }
-          }
+          ),
+          1500
         );
 
         createdEmails.push(email);
@@ -571,13 +587,17 @@ app.delete(
         });
       }
 
-      const job =
-        await emailQueue.getJob(
-          `email-${id}`
-        );
+      const job = await runWithTimeout(
+        emailQueue.getJob(`email-${id}`),
+        1500
+      );
 
       if (job) {
-        await job.remove();
+        try {
+          await runWithTimeout(job.remove(), 1500);
+        } catch (err) {
+          console.warn("Failed to remove job from queue:", err);
+        }
       }
 
       await pool.query(
@@ -603,6 +623,83 @@ app.delete(
     }
   }
 );
+
+// Fallback background polling worker to send emails directly via PostgreSQL if Redis is down
+async function postgresFallbackWorker() {
+  try {
+    const result = await pool.query(
+      `
+      SELECT * FROM emails
+      WHERE status = 'scheduled'
+        AND scheduled_time <= CURRENT_TIMESTAMP
+      ORDER BY scheduled_time ASC
+      LIMIT 10
+      `
+    );
+
+    for (const email of result.rows) {
+      const emailId = email.id;
+      const sender = email.sender_email || "default";
+
+      try {
+        console.log(`[Fallback Worker] Processing scheduled email ID ${emailId} to ${email.recipient_email}`);
+
+        const updateResult = await pool.query(
+          `
+          UPDATE emails
+          SET status = 'processing'
+          WHERE id = $1 AND status = 'scheduled'
+          RETURNING *
+          `,
+          [emailId]
+        );
+
+        if (updateResult.rowCount === 0) {
+          continue;
+        }
+
+        const { transporter, account } = await getTransporter(sender);
+        const info = await transporter.sendMail({
+          from: `${sender} <${account.user}>`,
+          to: email.recipient_email,
+          subject: email.subject,
+          text: email.body
+        });
+
+        await pool.query(
+          `
+          UPDATE emails
+          SET
+            status = 'sent',
+            sent_time = CURRENT_TIMESTAMP,
+            failed_reason = NULL
+          WHERE id = $1
+          `,
+          [emailId]
+        );
+
+        console.log(`[Fallback Worker] Email ${emailId} successfully sent to ${email.recipient_email}`);
+      } catch (err: any) {
+        console.error(`[Fallback Worker] Failed to send email ID ${emailId}:`, err.message);
+        await pool.query(
+          `
+          UPDATE emails
+          SET
+            status = 'failed',
+            failed_reason = $2
+          WHERE id = $1
+          `,
+          [emailId, err.message]
+        );
+      }
+    }
+  } catch (err: any) {
+    console.error("[Fallback Worker] Error in database polling loop:", err.message);
+  }
+}
+
+// Start the fallback polling loop every 5 seconds
+setInterval(postgresFallbackWorker, 5000);
 
 const PORT =
   Number(process.env.PORT) || 5000;
