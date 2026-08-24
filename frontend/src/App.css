@@ -807,7 +807,7 @@ body {
   background-color: var(--surface-card);
   border-radius: 16px;
   width: 90%;
-  max-width: 820px; /* Widescreen modal */
+  max-width: 1020px; /* Widescreen modal */
   box-shadow: var(--shadow-modal);
   animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   max-height: 90vh;

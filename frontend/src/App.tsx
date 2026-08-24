@@ -47,9 +47,9 @@ function App() {
     }
   };
 
-  const fetchEmails = async () => {
+  const fetchEmails = async (silent: boolean = false) => {
     try {
-      setLoadingEmails(true);
+      if (!silent) setLoadingEmails(true);
       const response = await fetch("http://localhost:5000/emails");
       if (!response.ok) {
         throw new Error("Failed to fetch");
@@ -67,10 +67,8 @@ function App() {
         (e) => e.status === "sent" || e.status === "failed"
       );
 
-      // Order scheduled emails by scheduled_time ASC
-      scheduled.sort(
-        (a, b) => new Date(a.scheduled_time).getTime() - new Date(b.scheduled_time).getTime()
-      );
+      // Order scheduled emails by id DESC (newest first)
+      scheduled.sort((a, b) => b.id - a.id);
 
       // Order sent emails by sent_time DESC (newest first)
       sent.sort((a, b) => {
@@ -82,16 +80,28 @@ function App() {
       setScheduledEmails(scheduled);
       setSentEmails(sent);
     } catch {
-      setMessage("Failed to load emails");
+      if (!silent) setMessage("Failed to load emails");
     } finally {
-      setLoadingEmails(false);
+      if (!silent) setLoadingEmails(false);
     }
   };
 
+  // Fetch user session and initial email list on mount
   useEffect(() => {
     fetchUser();
     fetchEmails();
   }, []);
+
+  // Poll for real-time email list updates in the background when user is active
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      fetchEmails(true);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   const loginWithGoogle = () => {
     window.location.href = "http://localhost:5000/auth/google";
