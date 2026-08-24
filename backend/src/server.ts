@@ -7,44 +7,44 @@ import dotenv from "dotenv";
 import cors from "cors";
 import session from "express-session";
 import passport from "passport";
-import GoogleStrategy from "passport-google-oauth20";
+
+import {
+  Strategy as GoogleStrategy
+} from "passport-google-oauth20";
 
 import pool from "./config/db";
-import { emailQueue } from "./queue/emailQueue";
+import {
+  emailQueue
+} from "./queue/emailQueue";
 
 dotenv.config();
 
 const app = express();
 
+const PORT =
+  Number(process.env.PORT) || 5000;
+
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
-  "https://emailflow-k7d4.onrender.com";
+  "http://localhost:5173";
 
 const isProduction =
   process.env.NODE_ENV === "production";
 
-app.set("trust proxy", 1);
+app.set(
+  "trust proxy",
+  1
+);
 
-/* =========================
+/* =========================================
    CORS
-========================= */
+========================================= */
 
 const allowedOrigins = [
-  "https://emailflow-k7d4.onrender.com",
+  FRONTEND_URL,
   "http://localhost:5173",
   "http://localhost:3000"
 ];
-
-if (
-  process.env.FRONTEND_URL &&
-  !allowedOrigins.includes(
-    process.env.FRONTEND_URL
-  )
-) {
-  allowedOrigins.push(
-    process.env.FRONTEND_URL
-  );
-}
 
 app.use(
   cors({
@@ -53,23 +53,29 @@ app.use(
       callback
     ) => {
       if (!origin) {
-        return callback(null, true);
+        return callback(
+          null,
+          true
+        );
       }
 
       if (
         allowedOrigins.includes(origin)
       ) {
-        return callback(null, true);
+        return callback(
+          null,
+          true
+        );
       }
 
       console.log(
-        "Blocked by CORS:",
+        "Blocked CORS origin:",
         origin
       );
 
       return callback(
         new Error(
-          `Origin ${origin} is not allowed by CORS`
+          `Origin ${origin} is not allowed`
         )
       );
     },
@@ -92,17 +98,19 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(
+  express.json()
+);
 
-/* =========================
+/* =========================================
    SESSION
-========================= */
+========================================= */
 
 app.use(
   session({
     secret:
       process.env.SESSION_SECRET ||
-      "emailflow_super_secret",
+      "emailflow_secret",
 
     resave: false,
 
@@ -110,11 +118,16 @@ app.use(
 
     cookie: {
       secure: isProduction,
+
       httpOnly: true,
+
       sameSite:
         isProduction
           ? "none"
-          : "lax"
+          : "lax",
+
+      maxAge:
+        7 * 24 * 60 * 60 * 1000
     }
   })
 );
@@ -127,69 +140,94 @@ app.use(
   passport.session()
 );
 
+/* =========================================
+   PASSPORT
+========================================= */
+
 passport.serializeUser(
-  (user: any, done) => {
-    done(null, user);
+  (
+    user: any,
+    done
+  ) => {
+    done(
+      null,
+      user
+    );
   }
 );
 
 passport.deserializeUser(
-  (user: any, done) => {
-    done(null, user);
+  (
+    user: any,
+    done
+  ) => {
+    done(
+      null,
+      user
+    );
   }
 );
 
-/* =========================
+/* =========================================
    GOOGLE OAUTH
-========================= */
+========================================= */
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID:
-        process.env
-          .GOOGLE_CLIENT_ID as string,
+if (
+  process.env.GOOGLE_CLIENT_ID &&
+  process.env.GOOGLE_CLIENT_SECRET
+) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID:
+          process.env.GOOGLE_CLIENT_ID,
 
-      clientSecret:
-        process.env
-          .GOOGLE_CLIENT_SECRET as string,
+        clientSecret:
+          process.env.GOOGLE_CLIENT_SECRET,
 
-      callbackURL:
-        process.env.GOOGLE_CALLBACK_URL ||
-        "https://emailflow-api-zhwz.onrender.com/auth/google/callback"
-    },
+        callbackURL:
+          process.env.GOOGLE_CALLBACK_URL ||
+          "http://localhost:5000/auth/google/callback"
+      },
 
-    async (
-      accessToken,
-      refreshToken,
-      profile,
-      done
-    ) => {
-      try {
-        return done(null, {
-          id: profile.id,
+      async (
+        accessToken,
+        refreshToken,
+        profile,
+        done
+      ) => {
+        try {
+          return done(
+            null,
+            {
+              id:
+                profile.id,
 
-          name:
-            profile.displayName,
+              name:
+                profile.displayName,
 
-          email:
-            profile.emails?.[0]?.value,
+              email:
+                profile.emails?.[0]
+                  ?.value,
 
-          avatar:
-            profile.photos?.[0]?.value
-        });
-      } catch (error) {
-        return done(
-          error as Error
-        );
+              avatar:
+                profile.photos?.[0]
+                  ?.value
+            }
+          );
+        } catch (error) {
+          return done(
+            error as Error
+          );
+        }
       }
-    }
-  )
-);
+    )
+  );
+}
 
-/* =========================
-   BASIC ROUTES
-========================= */
+/* =========================================
+   ROOT
+========================================= */
 
 app.get(
   "/",
@@ -199,14 +237,17 @@ app.get(
   ) => {
     res.json({
       message:
-        "EmailFlow API is running!"
+        "EmailFlow API is running"
     });
   }
 );
 
+/* =========================================
+   GOOGLE LOGIN
+========================================= */
+
 app.get(
   "/auth/google",
-
   passport.authenticate(
     "google",
     {
@@ -247,9 +288,11 @@ app.get(
     res: Response
   ) => {
     if (!req.user) {
-      return res.status(401).json({
-        authenticated: false
-      });
+      return res
+        .status(401)
+        .json({
+          authenticated: false
+        });
     }
 
     res.json({
@@ -277,24 +320,35 @@ app.post(
             });
         }
 
-        req.session.destroy(() => {
-          res.clearCookie(
-            "connect.sid"
-          );
+        req.session.destroy(
+          () => {
+            res.clearCookie(
+              "connect.sid",
+              {
+                secure:
+                  isProduction,
 
-          res.json({
-            message:
-              "Logged out successfully"
-          });
-        });
+                sameSite:
+                  isProduction
+                    ? "none"
+                    : "lax"
+              }
+            );
+
+            res.json({
+              message:
+                "Logged out successfully"
+            });
+          }
+        );
       }
     );
   }
 );
 
-/* =========================
-   HEALTH CHECK
-========================= */
+/* =========================================
+   HEALTH
+========================================= */
 
 app.get(
   "/health",
@@ -315,56 +369,24 @@ app.get(
         database: "connected",
         redis: "connected"
       });
-    } catch (error) {
-      res.status(500).json({
-        status: "error",
-        message:
-          "Database or Redis is not connected"
-      });
-    }
-  }
-);
-
-/* =========================
-   TEST DATABASE
-========================= */
-
-app.get(
-  "/test-db",
-
-  async (
-    req: Request,
-    res: Response
-  ) => {
-    try {
-      const result =
-        await pool.query(
-          "SELECT NOW()"
-        );
-
-      res.json({
-        message:
-          "Database connected successfully!",
-        time:
-          result.rows[0].now
-      });
-    } catch (error) {
+    } catch (error: any) {
       console.error(
-        "Database error:",
-        error
+        "Health check failed:",
+        error.message
       );
 
       res.status(500).json({
+        status: "error",
         message:
-          "Database connection failed"
+          error.message
       });
     }
   }
 );
 
-/* =========================
+/* =========================================
    SCHEDULE SINGLE EMAIL
-========================= */
+========================================= */
 
 app.post(
   "/emails",
@@ -392,7 +414,7 @@ app.post(
           .status(400)
           .json({
             message:
-              "All fields are required"
+              "recipient_email, subject, body and scheduled_time are required"
           });
       }
 
@@ -402,7 +424,7 @@ app.post(
         );
 
       if (
-        isNaN(
+        Number.isNaN(
           scheduledDate.getTime()
         )
       ) {
@@ -414,11 +436,10 @@ app.post(
           });
       }
 
-      const delay =
-        scheduledDate.getTime() -
-        Date.now();
-
-      if (delay < 0) {
+      if (
+        scheduledDate.getTime() <=
+        Date.now()
+      ) {
         return res
           .status(400)
           .json({
@@ -451,7 +472,7 @@ app.post(
           RETURNING *
           `,
           [
-            recipient_email,
+            recipient_email.trim(),
             sender_email || null,
             subject,
             body,
@@ -462,6 +483,10 @@ app.post(
       const email =
         result.rows[0];
 
+      const delay =
+        scheduledDate.getTime() -
+        Date.now();
+
       await emailQueue.add(
         "send-email",
         {
@@ -471,14 +496,7 @@ app.post(
           delay,
 
           jobId:
-            `email-${email.id}`,
-
-          attempts: 3,
-
-          backoff: {
-            type: "exponential",
-            delay: 5000
-          }
+            `email-${email.id}`
         }
       );
 
@@ -487,10 +505,10 @@ app.post(
           "Email scheduled successfully",
         email
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(
-        "Error scheduling email:",
-        error
+        "Schedule email error:",
+        error.message
       );
 
       res.status(500).json({
@@ -501,9 +519,9 @@ app.post(
   }
 );
 
-/* =========================
-   SCHEDULE BULK EMAILS
-========================= */
+/* =========================================
+   BULK SCHEDULE
+========================================= */
 
 app.post(
   "/emails/bulk",
@@ -538,10 +556,12 @@ app.post(
       }
 
       const startDate =
-        new Date(start_time);
+        new Date(
+          start_time
+        );
 
       if (
-        isNaN(
+        Number.isNaN(
           startDate.getTime()
         )
       ) {
@@ -554,16 +574,20 @@ app.post(
       }
 
       const delayBetween =
-        Number(
-          delay_between_emails
-        ) ||
-        Number(
-          process.env
-            .MIN_EMAIL_DELAY_MS
-        ) ||
-        2000;
+        Math.max(
+          Number(
+            delay_between_emails
+          ) ||
+            Number(
+              process.env
+                .MIN_EMAIL_DELAY_MS
+            ) ||
+            2000,
+          1000
+        );
 
-      const createdEmails = [];
+      const createdEmails: any[] =
+        [];
 
       for (
         let i = 0;
@@ -582,7 +606,7 @@ app.post(
         const scheduledTime =
           new Date(
             startDate.getTime() +
-            i * delayBetween
+              i * delayBetween
           );
 
         const result =
@@ -610,7 +634,8 @@ app.post(
             `,
             [
               recipient,
-              sender_email || null,
+              sender_email ||
+                null,
               subject,
               body,
               scheduledTime
@@ -630,24 +655,21 @@ app.post(
         await emailQueue.add(
           "send-email",
           {
-            emailId: email.id
+            emailId:
+              email.id
           },
           {
-            delay: jobDelay,
+            delay:
+              jobDelay,
 
             jobId:
-              `email-${email.id}`,
-
-            attempts: 3,
-
-            backoff: {
-              type: "exponential",
-              delay: 5000
-            }
+              `email-${email.id}`
           }
         );
 
-        createdEmails.push(email);
+        createdEmails.push(
+          email
+        );
       }
 
       res.status(201).json({
@@ -660,10 +682,10 @@ app.post(
         emails:
           createdEmails
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(
         "Bulk scheduling error:",
-        error
+        error.message
       );
 
       res.status(500).json({
@@ -674,9 +696,9 @@ app.post(
   }
 );
 
-/* =========================
+/* =========================================
    GET ALL EMAILS
-========================= */
+========================================= */
 
 app.get(
   "/emails",
@@ -699,23 +721,18 @@ app.get(
         emails:
           result.rows
       });
-    } catch (error) {
-      console.error(
-        "Failed to fetch emails:",
-        error
-      );
-
+    } catch (error: any) {
       res.status(500).json({
         message:
-          "Failed to fetch emails"
+          error.message
       });
     }
   }
 );
 
-/* =========================
+/* =========================================
    GET SCHEDULED EMAILS
-========================= */
+========================================= */
 
 app.get(
   "/emails/scheduled",
@@ -743,23 +760,18 @@ app.get(
         emails:
           result.rows
       });
-    } catch (error) {
-      console.error(
-        "Failed to fetch scheduled emails:",
-        error
-      );
-
+    } catch (error: any) {
       res.status(500).json({
         message:
-          "Failed to fetch scheduled emails"
+          error.message
       });
     }
   }
 );
 
-/* =========================
+/* =========================================
    GET SENT / FAILED EMAILS
-========================= */
+========================================= */
 
 app.get(
   "/emails/sent",
@@ -779,8 +791,9 @@ app.get(
             'sent',
             'failed'
           )
-          ORDER BY sent_time DESC NULLS LAST,
-                   scheduled_time DESC
+          ORDER BY
+            sent_time DESC NULLS LAST,
+            scheduled_time DESC
           `
         );
 
@@ -788,23 +801,18 @@ app.get(
         emails:
           result.rows
       });
-    } catch (error) {
-      console.error(
-        "Failed to fetch sent emails:",
-        error
-      );
-
+    } catch (error: any) {
       res.status(500).json({
         message:
-          "Failed to fetch sent emails"
+          error.message
       });
     }
   }
 );
 
-/* =========================
+/* =========================================
    CANCEL EMAIL
-========================= */
+========================================= */
 
 app.delete(
   "/emails/:id",
@@ -815,7 +823,9 @@ app.delete(
   ) => {
     try {
       const id =
-        Number(req.params.id);
+        Number(
+          req.params.id
+        );
 
       const result =
         await pool.query(
@@ -857,13 +867,7 @@ app.delete(
         );
 
       if (job) {
-        try {
-          await job.remove();
-        } catch (error) {
-          console.warn(
-            `Could not remove queue job for email ${id}`
-          );
-        }
+        await job.remove();
       }
 
       await pool.query(
@@ -879,10 +883,10 @@ app.delete(
         message:
           "Email cancelled successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(
-        "Failed to cancel email:",
-        error
+        "Cancel email error:",
+        error.message
       );
 
       res.status(500).json({
@@ -893,33 +897,15 @@ app.delete(
   }
 );
 
-/* =========================
-   START SERVER + WORKER
-========================= */
-
-const PORT =
-  Number(
-    process.env.PORT
-  ) || 5000;
+/* =========================================
+   START SERVER
+========================================= */
 
 app.listen(
   PORT,
-  async () => {
+  () => {
     console.log(
       `Server running on port ${PORT}`
     );
-
-    try {
-      await import("./worker");
-
-      console.log(
-        "Background email queue worker started."
-      );
-    } catch (error) {
-      console.error(
-        "Failed to start email worker:",
-        error
-      );
-    }
   }
 );
