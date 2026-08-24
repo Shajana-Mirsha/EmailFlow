@@ -614,8 +614,12 @@ app.listen(PORT, () => {
 
   // Start the background queue worker in the same process for simplified cloud deployment (e.g. on Render)
   if (process.env.NODE_ENV === "production" || process.env.START_WORKER === "true") {
-    import("./worker").then(() => {
-      console.log("Background email queue worker started inside server process.");
-    });
+    import("./worker")
+      .then(() => {
+        console.log("Background email queue worker started inside server process.");
+      })
+      .catch((err) => {
+        console.error("Failed to start background queue worker:", err);
+      });
   }
 });

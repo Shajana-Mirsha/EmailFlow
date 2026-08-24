@@ -12,6 +12,10 @@ export const connection = process.env.REDIS_URL
       maxRetriesPerRequest: null
     });
 
+connection.on("error", (err) => {
+  console.error("Redis Connection Error:", err);
+});
+
 export const emailQueue = new Queue("email-queue", {
   connection,
   defaultJobOptions: {
