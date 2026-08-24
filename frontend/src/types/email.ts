@@ -6,6 +6,7 @@ export interface Email {
   scheduled_time: string;
   status: string;
   sent_time: string | null;
+  failed_reason?: string | null;
 }
 
 export interface User {

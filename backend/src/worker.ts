@@ -138,9 +138,33 @@ export async function getTransporter(sender: string) {
   let account = testAccounts.get(sender);
 
   if (!account) {
-    account = await nodemailer.createTestAccount();
-
-    testAccounts.set(sender, account);
+    try {
+      account = await nodemailer.createTestAccount();
+      testAccounts.set(sender, account);
+    } catch (err) {
+      console.warn("Failed to dynamically generate Ethereal SMTP account. Using static fallback:", err);
+      account = {
+        user: "adrian.crist23@ethereal.email",
+        pass: "8X9984kMuzj684s7uN",
+        smtp: {
+          host: "smtp.ethereal.email",
+          port: 587,
+          secure: false
+        },
+        imap: {
+          host: "imap.ethereal.email",
+          port: 993,
+          secure: true
+        },
+        pop3: {
+          host: "pop3.ethereal.email",
+          port: 995,
+          secure: true
+        },
+        web: "https://ethereal.email"
+      };
+      testAccounts.set(sender, account);
+    }
   }
 
   const transporter = nodemailer.createTransport({

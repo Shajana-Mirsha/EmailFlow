@@ -86,6 +86,11 @@ export const SentEmailsTable: React.FC<SentEmailsTableProps> = ({
                 </td>
                 <td>
                   <StatusBadge status={email.status} />
+                  {email.status === "failed" && email.failed_reason && (
+                    <div style={{ fontSize: "0.75rem", color: "#ef4444", marginTop: "0.25rem", wordBreak: "break-word" }}>
+                      {email.failed_reason}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
