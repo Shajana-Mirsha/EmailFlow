@@ -24,6 +24,34 @@ export const formatDateTime = (dateStr: string | null, includeSeconds = false): 
 };
 
 /**
+ * Formats a date string putting the time first, with seconds:
+ * e.g., 10:30:04 PM (Aug 24)
+ */
+export const formatTimeFirst = (dateStr: string | null): string => {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "-";
+
+    const timeStr = d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+
+    const dateStrFormatted = d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+
+    return `${timeStr} (${dateStrFormatted})`;
+  } catch {
+    return "-";
+  }
+};
+
+/**
  * Calculates the difference in seconds between the scheduled time and actual sent time.
  */
 export const getDelaySeconds = (scheduledTimeStr: string, sentTimeStr: string | null): number | null => {
@@ -43,16 +71,13 @@ export const getDelaySeconds = (scheduledTimeStr: string, sentTimeStr: string | 
  * Formats a delay duration in a friendly format.
  */
 export const formatDelay = (seconds: number): string => {
-  if (seconds <= 1) {
-    return "On schedule";
-  }
   if (seconds < 60) {
-    return `Sent ${seconds}s late`;
+    return `${seconds}s`;
   }
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   if (remainingSeconds === 0) {
-    return `Sent ${minutes}m late`;
+    return `${minutes}m`;
   }
-  return `Sent ${minutes}m ${remainingSeconds}s late`;
+  return `${minutes}m ${remainingSeconds}s`;
 };

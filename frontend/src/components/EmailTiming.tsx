@@ -1,6 +1,6 @@
 import React from "react";
 import type { Email } from "../types/email";
-import { formatDateTime, getDelaySeconds, formatDelay } from "../utils/dateUtils";
+import { formatDateTime, getDelaySeconds, formatDelay, formatTimeFirst } from "../utils/dateUtils";
 
 interface EmailTimingProps {
   email: Email;
@@ -53,16 +53,16 @@ export const EmailTiming: React.FC<EmailTimingProps> = ({ email, showSentInfo = 
           <span className="timing-label">
             {email.status === "failed" ? "Failed At:" : "Actually Sent:"}
           </span>
-          <span className="timing-val">{formatDateTime(email.sent_time, true)}</span>
+          <span className="timing-val">{formatTimeFirst(email.sent_time)}</span>
         </div>
       </div>
 
       {delayFormatted && (
         <div className={`timing-delay-badge ${isOnSchedule ? "on-schedule" : "late"}`}>
           {isOnSchedule ? (
-            <span className="delay-badge-text">✓ On schedule</span>
+            <span className="delay-badge-text">✓ {delayFormatted} delay</span>
           ) : (
-            <span className="delay-badge-text">⌛ {delayFormatted.replace("Sent ", "")}</span>
+            <span className="delay-badge-text">⌛ {delayFormatted} delay</span>
           )}
         </div>
       )}
