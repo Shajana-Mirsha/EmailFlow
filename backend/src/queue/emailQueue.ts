@@ -28,3 +28,7 @@ export const emailQueue = new Queue("email-queue", {
     removeOnFail: false
   }
 });
+
+emailQueue.on("error", (err) => {
+  console.error("BullMQ Queue Error:", err);
+});

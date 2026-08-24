@@ -16,11 +16,20 @@ const timeoutPromise = (ms: number) =>
     setTimeout(() => reject(new Error("Timeout")), ms)
   );
 
-async function runWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+async function runWithTimeout<T>(
+  promise: Promise<T>,
+  ms: number
+): Promise<T | null> {
   try {
-    return (await Promise.race([promise, timeoutPromise(ms)])) as T;
+    return (await Promise.race([
+      promise,
+      timeoutPromise(ms)
+    ])) as T;
   } catch (err: any) {
-    console.warn("Operation timed out or failed (likely Redis is offline):", err.message);
+    console.warn(
+      "Operation timed out or failed (likely Redis is offline):",
+      err.message
+    );
     return null;
   }
 }
@@ -36,10 +45,59 @@ const isProduction =
 
 app.set("trust proxy", 1);
 
+/* =========================
+   CORS CONFIGURATION
+========================= */
+
+const allowedOrigins = [
+  "https://emailflow-k7d4.onrender.com",
+  "http://localhost:5173",
+  "http://localhost:3000"
+];
+
+if (
+  process.env.FRONTEND_URL &&
+  !allowedOrigins.includes(process.env.FRONTEND_URL)
+) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+
 app.use(
   cors({
-    origin: FRONTEND_URL,
-    credentials: true
+    origin: (origin, callback) => {
+      // Allow requests without an Origin header
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.log("Blocked by CORS:", origin);
+
+      return callback(
+        new Error(
+          `Origin ${origin} is not allowed by CORS`
+        )
+      );
+    },
+
+    credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS"
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization"
+    ]
   })
 );
 
@@ -50,8 +108,11 @@ app.use(
     secret:
       process.env.SESSION_SECRET ||
       "emailflow_super_secret",
+
     resave: false,
+
     saveUninitialized: false,
+
     cookie: {
       secure: isProduction,
       httpOnly: true,
@@ -75,7 +136,8 @@ passport.deserializeUser((user: any, done) => {
 passport.use(
   new GoogleStrategy(
     {
-      clientID: process.env.GOOGLE_CLIENT_ID as string,
+      clientID:
+        process.env.GOOGLE_CLIENT_ID as string,
 
       clientSecret:
         process.env.GOOGLE_CLIENT_SECRET as string,
@@ -395,7 +457,7 @@ app.post(
 
         const scheduledTime = new Date(
           startDate.getTime() +
-            i * delayBetween
+          i * delayBetween
         );
 
         const result = await pool.query(
@@ -488,6 +550,11 @@ app.get(
         emails: result.rows
       });
     } catch (error) {
+      console.error(
+        "Failed to fetch emails:",
+        error
+      );
+
       res.status(500).json({
         message:
           "Failed to fetch emails"
@@ -517,6 +584,11 @@ app.get(
         emails: result.rows
       });
     } catch (error) {
+      console.error(
+        "Failed to fetch scheduled emails:",
+        error
+      );
+
       res.status(500).json({
         message:
           "Failed to fetch scheduled emails"
@@ -546,6 +618,11 @@ app.get(
         emails: result.rows
       });
     } catch (error) {
+      console.error(
+        "Failed to fetch sent emails:",
+        error
+      );
+
       res.status(500).json({
         message:
           "Failed to fetch sent emails"
@@ -594,9 +671,15 @@ app.delete(
 
       if (job) {
         try {
-          await runWithTimeout(job.remove(), 1500);
+          await runWithTimeout(
+            job.remove(),
+            1500
+          );
         } catch (err) {
-          console.warn("Failed to remove job from queue:", err);
+          console.warn(
+            "Failed to remove job from queue:",
+            err
+          );
         }
       }
 
@@ -624,7 +707,10 @@ app.delete(
   }
 );
 
-// Fallback background polling worker to send emails directly via PostgreSQL if Redis is down
+/* =========================
+   FALLBACK POSTGRES WORKER
+========================= */
+
 async function postgresFallbackWorker() {
   try {
     const result = await pool.query(
@@ -639,32 +725,44 @@ async function postgresFallbackWorker() {
 
     for (const email of result.rows) {
       const emailId = email.id;
-      const sender = email.sender_email || "default";
+      const sender =
+        email.sender_email || "default";
 
       try {
-        console.log(`[Fallback Worker] Processing scheduled email ID ${emailId} to ${email.recipient_email}`);
-
-        const updateResult = await pool.query(
-          `
-          UPDATE emails
-          SET status = 'processing'
-          WHERE id = $1 AND status = 'scheduled'
-          RETURNING *
-          `,
-          [emailId]
+        console.log(
+          `[Fallback Worker] Processing scheduled email ID ${emailId} to ${email.recipient_email}`
         );
 
-        if (updateResult.rowCount === 0) {
+        const updateResult =
+          await pool.query(
+            `
+            UPDATE emails
+            SET status = 'processing'
+            WHERE id = $1
+              AND status = 'scheduled'
+            RETURNING *
+            `,
+            [emailId]
+          );
+
+        if (
+          updateResult.rowCount === 0
+        ) {
           continue;
         }
 
-        const { transporter, account } = await getTransporter(sender);
-        const info = await transporter.sendMail({
-          from: `${sender} <${account.user}>`,
-          to: email.recipient_email,
-          subject: email.subject,
-          text: email.body
-        });
+        const {
+          transporter,
+          account
+        } = await getTransporter(sender);
+
+        const info =
+          await transporter.sendMail({
+            from: `${sender} <${account.user}>`,
+            to: email.recipient_email,
+            subject: email.subject,
+            text: email.body
+          });
 
         await pool.query(
           `
@@ -678,9 +776,15 @@ async function postgresFallbackWorker() {
           [emailId]
         );
 
-        console.log(`[Fallback Worker] Email ${emailId} successfully sent to ${email.recipient_email}`);
+        console.log(
+          `[Fallback Worker] Email ${emailId} successfully sent to ${email.recipient_email}`
+        );
       } catch (err: any) {
-        console.error(`[Fallback Worker] Failed to send email ID ${emailId}:`, err.message);
+        console.error(
+          `[Fallback Worker] Failed to send email ID ${emailId}:`,
+          err.message
+        );
+
         await pool.query(
           `
           UPDATE emails
@@ -689,17 +793,29 @@ async function postgresFallbackWorker() {
             failed_reason = $2
           WHERE id = $1
           `,
-          [emailId, err.message]
+          [
+            emailId,
+            err.message
+          ]
         );
       }
     }
   } catch (err: any) {
-    console.error("[Fallback Worker] Error in database polling loop:", err.message);
+    console.error(
+      "[Fallback Worker] Error in database polling loop:",
+      err.message
+    );
   }
 }
 
-// Start the fallback polling loop every 5 seconds
-setInterval(postgresFallbackWorker, 5000);
+/* =========================
+   START FALLBACK WORKER
+========================= */
+
+setInterval(
+  postgresFallbackWorker,
+  5000
+);
 
 const PORT =
   Number(process.env.PORT) || 5000;
@@ -709,12 +825,16 @@ app.listen(PORT, () => {
     `Server running on port ${PORT}`
   );
 
-  // Start the background queue worker in the same process for simplified cloud deployment (e.g. on Render)
   import("./worker")
     .then(() => {
-      console.log("Background email queue worker started inside server process.");
+      console.log(
+        "Background email queue worker started inside server process."
+      );
     })
     .catch((err) => {
-      console.error("Failed to start background queue worker:", err);
+      console.error(
+        "Failed to start background queue worker:",
+        err
+      );
     });
 });

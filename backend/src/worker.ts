@@ -174,7 +174,10 @@ export async function getTransporter(sender: string) {
     auth: {
       user: account.user,
       pass: account.pass
-    }
+    },
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 10000
   });
 
   return {
@@ -291,7 +294,7 @@ async function processEmail(
     SET
       status = 'sent',
       sent_time = CURRENT_TIMESTAMP,
-      failed_reason = NULL
+      error_message = NULL
     WHERE id = $1
       AND status = 'scheduled'
     `,
@@ -347,7 +350,7 @@ worker.on(
         UPDATE emails
         SET
           status = 'failed',
-          failed_reason = $2
+          error_message = $2
         WHERE id = $1
           AND status != 'sent'
         `,
@@ -359,6 +362,10 @@ worker.on(
     }
   }
 );
+
+worker.on("error", (err) => {
+  console.error("BullMQ Worker Error:", err);
+});
 
 console.log(
   `Email worker running with concurrency ${CONCURRENCY}`
