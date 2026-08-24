@@ -165,7 +165,7 @@ function App() {
 
       const data = await response.json();
       setMessage(data.message || "Email cancelled successfully");
-      fetchEmails();
+      fetchEmails(true);
     } catch {
       setMessage("Failed to cancel email");
     } finally {
