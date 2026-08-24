@@ -1,15 +1,10 @@
 import dotenv from "dotenv";
 import { Worker, Job } from "bullmq";
-import { Resend } from "resend";
 
 import pool from "./config/db";
 import { connection } from "./queue/emailQueue";
 
 dotenv.config();
-
-const resend = new Resend(
-  process.env.RESEND_API_KEY
-);
 
 const CONCURRENCY =
   Number(process.env.WORKER_CONCURRENCY) || 5;
@@ -80,29 +75,13 @@ async function processEmail(
 
   try {
     console.log(
-      `Sending email ${emailId} to ${currentEmail.recipient_email}`
+      `[SIMULATED SEND] Sending email ${emailId} to ${currentEmail.recipient_email}`
     );
+    console.log(`[EMAIL METADATA] Subject: "${currentEmail.subject}"`);
+    console.log(`[EMAIL BODY] ${currentEmail.body}`);
 
-    const response =
-      await resend.emails.send({
-        from:
-          "EmailFlow <onboarding@resend.dev>",
-
-        to:
-          currentEmail.recipient_email,
-
-        subject:
-          currentEmail.subject,
-
-        text:
-          currentEmail.body
-      });
-
-    if (response.error) {
-      throw new Error(
-        response.error.message
-      );
-    }
+    // Simulate sending network latency
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     await pool.query(
       `
@@ -117,7 +96,7 @@ async function processEmail(
     );
 
     console.log(
-      `Email ${emailId} sent successfully`
+      `Email ${emailId} sent successfully (Simulated)`
     );
 
   } catch (error: any) {

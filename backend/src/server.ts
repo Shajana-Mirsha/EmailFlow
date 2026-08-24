@@ -907,5 +907,14 @@ app.listen(
     console.log(
       `Server running on port ${PORT}`
     );
+
+    // Start the background queue worker in the same process
+    import("./worker")
+      .then(() => {
+        console.log("Background email queue worker started inside server process.");
+      })
+      .catch((err) => {
+        console.error("Failed to start background queue worker:", err);
+      });
   }
 );
