@@ -7,7 +7,7 @@ import { connection, emailQueue } from "./queue/emailQueue";
 dotenv.config();
 
 const CONCURRENCY =
-  Number(process.env.WORKER_CONCURRENCY) || 5;
+  Number(process.env.WORKER_CONCURRENCY) || 1;
 
 const MIN_DELAY_MS =
   Number(process.env.MIN_EMAIL_DELAY_MS) || 2000;
@@ -21,6 +21,10 @@ type EmailJob = {
 
 const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+/* =========================
+   HOURLY RATE LIMIT
+========================= */
 
 function getHourWindow() {
   const now = new Date();
@@ -80,22 +84,29 @@ async function reserveHourlySlot(sender: string) {
   return Number(result);
 }
 
+/* =========================
+   GLOBAL EMAIL DELAY
+========================= */
+
 async function waitForGlobalEmailSpacing() {
-  const key = "emailflow:last-email-send";
+  const key =
+    "emailflow:last-email-send";
 
   while (true) {
-    const lastValue = await connection.get(key);
+    const lastValue =
+      await connection.get(key);
 
     const now = Date.now();
 
     if (!lastValue) {
-      const locked = await connection.set(
-        key,
-        String(now),
-        "PX",
-        MIN_DELAY_MS,
-        "NX"
-      );
+      const locked =
+        await connection.set(
+          key,
+          String(now),
+          "PX",
+          MIN_DELAY_MS,
+          "NX"
+        );
 
       if (locked === "OK") {
         return;
@@ -104,19 +115,22 @@ async function waitForGlobalEmailSpacing() {
       continue;
     }
 
-    const lastSend = Number(lastValue);
+    const lastSend =
+      Number(lastValue);
 
     const remaining =
-      MIN_DELAY_MS - (now - lastSend);
+      MIN_DELAY_MS -
+      (now - lastSend);
 
     if (remaining <= 0) {
-      const locked = await connection.set(
-        key,
-        String(now),
-        "PX",
-        MIN_DELAY_MS,
-        "XX"
-      );
+      const locked =
+        await connection.set(
+          key,
+          String(now),
+          "PX",
+          MIN_DELAY_MS,
+          "XX"
+        );
 
       if (locked === "OK") {
         return;
@@ -125,96 +139,218 @@ async function waitForGlobalEmailSpacing() {
       continue;
     }
 
-    await sleep(Math.min(remaining, 500));
+    await sleep(
+      Math.min(remaining, 500)
+    );
   }
 }
 
-export const testAccounts = new Map<
-  string,
-  nodemailer.TestAccount
->();
+/* =========================
+   EMAIL TRANSPORTER
+========================= */
 
-export async function getTransporter(sender: string) {
-  let account = testAccounts.get(sender);
+/*
+  Ethereal is useful for testing.
 
-  if (!account) {
-    try {
-      account = await nodemailer.createTestAccount();
-      testAccounts.set(sender, account);
-    } catch (err) {
-      console.warn("Failed to dynamically generate Ethereal SMTP account. Using static fallback:", err);
-      account = {
-        user: "adrian.crist23@ethereal.email",
-        pass: "8X9984kMuzj684s7uN",
-        smtp: {
-          host: "smtp.ethereal.email",
-          port: 587,
-          secure: false
-        },
-        imap: {
-          host: "imap.ethereal.email",
-          port: 993,
-          secure: true
-        },
-        pop3: {
-          host: "pop3.ethereal.email",
-          port: 995,
-          secure: true
-        },
-        web: "https://ethereal.email"
-      };
-      testAccounts.set(sender, account);
-    }
+  For real sending later, you can replace
+  these environment variables with a real
+  SMTP provider.
+*/
+
+let transporter:
+  | nodemailer.Transporter
+  | null = null;
+
+let emailAccount:
+  | nodemailer.TestAccount
+  | null = null;
+
+export async function getTransporter(
+  sender?: string
+) {
+  if (transporter && emailAccount) {
+    return {
+      transporter,
+      account: emailAccount
+    };
   }
 
-  const transporter = nodemailer.createTransport({
-    host: account.smtp.host,
-    port: account.smtp.port,
-    secure: account.smtp.secure,
-    auth: {
-      user: account.user,
-      pass: account.pass
-    },
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 10000
-  });
+  /*
+    If SMTP environment variables exist,
+    use them.
+  */
 
-  return {
-    transporter,
-    account
-  };
+  if (
+    process.env.SMTP_HOST &&
+    process.env.SMTP_USER &&
+    process.env.SMTP_PASS
+  ) {
+    const smtpPort =
+      Number(process.env.SMTP_PORT) || 587;
+
+    transporter =
+      nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: smtpPort,
+        secure:
+          process.env.SMTP_SECURE === "true",
+
+        auth: {
+          user:
+            process.env.SMTP_USER,
+
+          pass:
+            process.env.SMTP_PASS
+        },
+
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 30000
+      });
+
+    emailAccount = {
+      user:
+        process.env.SMTP_USER,
+
+      pass:
+        process.env.SMTP_PASS,
+
+      smtp: {
+        host:
+          process.env.SMTP_HOST,
+
+        port:
+          smtpPort,
+
+        secure:
+          process.env.SMTP_SECURE ===
+          "true"
+      },
+
+      imap: {
+        host: "",
+        port: 0,
+        secure: false
+      },
+
+      pop3: {
+        host: "",
+        port: 0,
+        secure: false
+      },
+
+      web: ""
+    };
+
+    console.log(
+      "Using configured SMTP server:",
+      process.env.SMTP_HOST
+    );
+
+    return {
+      transporter,
+      account: emailAccount
+    };
+  }
+
+  /*
+    Otherwise use Ethereal test account.
+  */
+
+  console.log(
+    "Creating Ethereal test account..."
+  );
+
+  try {
+    emailAccount =
+      await nodemailer.createTestAccount();
+
+    transporter =
+      nodemailer.createTransport({
+        host:
+          emailAccount.smtp.host,
+
+        port:
+          emailAccount.smtp.port,
+
+        secure:
+          emailAccount.smtp.secure,
+
+        auth: {
+          user:
+            emailAccount.user,
+
+          pass:
+            emailAccount.pass
+        },
+
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 30000
+      });
+
+    console.log(
+      "Ethereal account created successfully"
+    );
+
+    return {
+      transporter,
+      account: emailAccount
+    };
+  } catch (error: any) {
+    console.error(
+      "Could not create Ethereal account:",
+      error.message
+    );
+
+    throw new Error(
+      "Email transporter could not be created"
+    );
+  }
 }
+
+/* =========================
+   PROCESS EMAIL
+========================= */
 
 async function processEmail(
   job: Job<EmailJob>
 ) {
-  const emailId = job.data.emailId;
+  const emailId =
+    job.data.emailId;
 
-  const result = await pool.query(
-    `
-    SELECT *
-    FROM emails
-    WHERE id = $1
-    `,
-    [emailId]
-  );
+  const result =
+    await pool.query(
+      `
+      SELECT *
+      FROM emails
+      WHERE id = $1
+      `,
+      [emailId]
+    );
 
-  const email = result.rows[0];
+  const email =
+    result.rows[0];
 
   if (!email) {
-    throw new Error("Email not found");
+    throw new Error(
+      "Email not found"
+    );
   }
 
-  if (email.status === "sent") {
+  if (
+    email.status === "sent"
+  ) {
     console.log(
-      `Email ${emailId} already sent. Skipping duplicate job.`
+      `Email ${emailId} already sent. Skipping.`
     );
 
     return;
   }
 
-  if (email.status === "cancelled") {
+  if (
+    email.status === "cancelled"
+  ) {
     console.log(
       `Email ${emailId} cancelled. Skipping.`
     );
@@ -222,17 +358,63 @@ async function processEmail(
     return;
   }
 
+  /*
+    Claim the email before sending.
+
+    This prevents the fallback worker
+    or another job from sending it twice.
+  */
+
+  const claimResult =
+    await pool.query(
+      `
+      UPDATE emails
+      SET status = 'processing'
+      WHERE id = $1
+        AND status = 'scheduled'
+      RETURNING *
+      `,
+      [emailId]
+    );
+
+  if (
+    claimResult.rowCount === 0
+  ) {
+    console.log(
+      `Email ${emailId} is already being processed.`
+    );
+
+    return;
+  }
+
+  const latestEmail =
+    claimResult.rows[0];
+
   const sender =
-    email.sender_email || "default";
+    latestEmail.sender_email ||
+    process.env.SMTP_USER ||
+    "EmailFlow";
 
   const allowed =
-    await reserveHourlySlot(sender);
+    await reserveHourlySlot(
+      sender
+    );
 
   if (allowed === 0) {
-    const delay = getNextHourDelay();
+    const delay =
+      getNextHourDelay();
+
+    await pool.query(
+      `
+      UPDATE emails
+      SET status = 'scheduled'
+      WHERE id = $1
+      `,
+      [emailId]
+    );
 
     console.log(
-      `Hourly limit reached for ${sender}. Rescheduling email ${emailId}.`
+      `Hourly limit reached. Rescheduling email ${emailId}.`
     );
 
     await emailQueue.add(
@@ -242,11 +424,18 @@ async function processEmail(
       },
       {
         delay,
-        jobId: `email-${emailId}-hour-${Date.now()}`,
+
+        jobId:
+          `email-${emailId}-hour-${Date.now()}`,
+
         attempts: 3,
+
         backoff: {
-          type: "exponential",
-          delay: 5000
+          type:
+            "exponential",
+
+          delay:
+            5000
         }
       }
     );
@@ -256,37 +445,31 @@ async function processEmail(
 
   await waitForGlobalEmailSpacing();
 
-  const latestResult = await pool.query(
-    `
-    SELECT *
-    FROM emails
-    WHERE id = $1
-    `,
-    [emailId]
-  );
-
-  const latestEmail =
-    latestResult.rows[0];
-
-  if (
-    !latestEmail ||
-    latestEmail.status === "sent" ||
-    latestEmail.status === "cancelled"
-  ) {
-    return;
-  }
-
   const {
     transporter,
     account
-  } = await getTransporter(sender);
+  } =
+    await getTransporter(
+      sender
+    );
 
-  const info = await transporter.sendMail({
-    from: `${sender} <${account.user}>`,
-    to: latestEmail.recipient_email,
-    subject: latestEmail.subject,
-    text: latestEmail.body
-  });
+  console.log(
+    `Sending email ${emailId} to ${latestEmail.recipient_email}`
+  );
+
+  const info =
+    await transporter.sendMail({
+      from: account.user,
+
+      to:
+        latestEmail.recipient_email,
+
+      subject:
+        latestEmail.subject,
+
+      text:
+        latestEmail.body
+    });
 
   await pool.query(
     `
@@ -296,55 +479,80 @@ async function processEmail(
       sent_time = CURRENT_TIMESTAMP,
       error_message = NULL
     WHERE id = $1
-      AND status = 'scheduled'
     `,
     [emailId]
   );
 
   console.log(
-    `Email sent to ${latestEmail.recipient_email}`
+    `Email ${emailId} sent successfully to ${latestEmail.recipient_email}`
   );
 
-  console.log(
-    "Ethereal preview:",
-    nodemailer.getTestMessageUrl(info)
-  );
+  const previewUrl =
+    nodemailer.getTestMessageUrl(info);
+
+  if (previewUrl) {
+    console.log(
+      "Ethereal preview:",
+      previewUrl
+    );
+  }
 }
 
-const worker = new Worker<EmailJob>(
-  "email-queue",
-  processEmail,
-  {
-    connection,
-    concurrency: CONCURRENCY
+/* =========================
+   BULLMQ WORKER
+========================= */
+
+const worker =
+  new Worker<EmailJob>(
+    "email-queue",
+    processEmail,
+    {
+      connection,
+      concurrency:
+        CONCURRENCY,
+
+      lockDuration:
+        60000
+    }
+  );
+
+worker.on(
+  "completed",
+  (job) => {
+    console.log(
+      `Job ${job.id} completed`
+    );
   }
 );
 
-worker.on("completed", (job) => {
-  console.log(
-    `Job ${job.id} completed`
-  );
-});
-
 worker.on(
   "failed",
-  async (job, error) => {
+  async (
+    job,
+    error
+  ) => {
     console.error(
       `Job ${job?.id} failed:`,
       error.message
     );
 
-    if (!job?.data.emailId) {
+    if (
+      !job?.data.emailId
+    ) {
       return;
     }
 
     const attempts =
       job.opts.attempts || 1;
 
-    const attemptsMade =
-      job.attemptsMade;
+    /*
+      BullMQ increments attemptsMade
+      before the next retry.
+    */
 
-    if (attemptsMade >= attempts) {
+    if (
+      job.attemptsMade >= attempts
+    ) {
       await pool.query(
         `
         UPDATE emails
@@ -359,13 +567,35 @@ worker.on(
           error.message
         ]
       );
+    } else {
+      /*
+        Allow the retry to process it.
+      */
+
+      await pool.query(
+        `
+        UPDATE emails
+        SET status = 'scheduled'
+        WHERE id = $1
+          AND status = 'processing'
+        `,
+        [
+          job.data.emailId
+        ]
+      );
     }
   }
 );
 
-worker.on("error", (err) => {
-  console.error("BullMQ Worker Error:", err);
-});
+worker.on(
+  "error",
+  (err) => {
+    console.error(
+      "BullMQ Worker Error:",
+      err
+    );
+  }
+);
 
 console.log(
   `Email worker running with concurrency ${CONCURRENCY}`
