@@ -3,16 +3,15 @@ import dotenv from "dotenv";
 import cors from "cors";
 import session from "express-session";
 import passport from "passport";
-import GoogleStrategy from "passport-google-oauth20";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import nodemailer from "nodemailer";
+
 import pool from "./config/db";
-import { emailQueue } from "./queue/emailQueue";
 import { getTransporter } from "./worker";
 
 dotenv.config();
 
 const app = express();
-
-const PORT = Number(process.env.PORT) || 5000;
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
@@ -20,40 +19,6 @@ const FRONTEND_URL =
 
 const isProduction =
   process.env.NODE_ENV === "production";
-
-/* =========================
-   REDIS TIMEOUT HELPER
-========================= */
-
-const timeoutPromise = (ms: number) =>
-  new Promise((_, reject) => {
-    setTimeout(() => {
-      reject(new Error("Timeout"));
-    }, ms);
-  });
-
-async function runWithTimeout<T>(
-  promise: Promise<T>,
-  ms: number
-): Promise<T | null> {
-  try {
-    return (await Promise.race([
-      promise,
-      timeoutPromise(ms)
-    ])) as T;
-  } catch (err: any) {
-    console.warn(
-      "Operation timed out or failed:",
-      err.message
-    );
-
-    return null;
-  }
-}
-
-/* =========================
-   TRUST PROXY
-========================= */
 
 app.set("trust proxy", 1);
 
@@ -88,9 +53,7 @@ app.use(
       console.log("Blocked by CORS:", origin);
 
       return callback(
-        new Error(
-          `Origin ${origin} is not allowed by CORS`
-        )
+        new Error(`Origin ${origin} is not allowed by CORS`)
       );
     },
 
@@ -131,9 +94,7 @@ app.use(
     cookie: {
       secure: isProduction,
       httpOnly: true,
-      sameSite: isProduction
-        ? "none"
-        : "lax"
+      sameSite: isProduction ? "none" : "lax"
     }
   })
 );
@@ -142,21 +103,17 @@ app.use(passport.initialize());
 
 app.use(passport.session());
 
+passport.serializeUser((user: any, done) => {
+  done(null, user);
+});
+
+passport.deserializeUser((user: any, done) => {
+  done(null, user);
+});
+
 /* =========================
-   PASSPORT
+   GOOGLE AUTH
 ========================= */
-
-passport.serializeUser(
-  (user: any, done) => {
-    done(null, user);
-  }
-);
-
-passport.deserializeUser(
-  (user: any, done) => {
-    done(null, user);
-  }
-);
 
 passport.use(
   new GoogleStrategy(
@@ -165,8 +122,7 @@ passport.use(
         process.env.GOOGLE_CLIENT_ID as string,
 
       clientSecret:
-        process.env
-          .GOOGLE_CLIENT_SECRET as string,
+        process.env.GOOGLE_CLIENT_SECRET as string,
 
       callbackURL:
         process.env.GOOGLE_CALLBACK_URL ||
@@ -183,15 +139,11 @@ passport.use(
         return done(null, {
           id: profile.id,
           name: profile.displayName,
-          email:
-            profile.emails?.[0]?.value,
-          avatar:
-            profile.photos?.[0]?.value
+          email: profile.emails?.[0]?.value,
+          avatar: profile.photos?.[0]?.value
         });
       } catch (error) {
-        return done(
-          error as Error
-        );
+        return done(error as Error);
       }
     }
   )
@@ -201,65 +153,36 @@ passport.use(
    BASIC ROUTES
 ========================= */
 
-app.get(
-  "/",
-  (
-    req: Request,
-    res: Response
-  ) => {
-    res.json({
-      message:
-        "EmailFlow API is running!"
-    });
-  }
-);
-
-/* =========================
-   GOOGLE AUTH
-========================= */
+app.get("/", (req: Request, res: Response) => {
+  res.json({
+    message: "EmailFlow API is running!"
+  });
+});
 
 app.get(
   "/auth/google",
 
-  passport.authenticate(
-    "google",
-    {
-      scope: [
-        "profile",
-        "email"
-      ]
-    }
-  )
+  passport.authenticate("google", {
+    scope: ["profile", "email"]
+  })
 );
 
 app.get(
   "/auth/google/callback",
 
-  passport.authenticate(
-    "google",
-    {
-      failureRedirect:
-        `${FRONTEND_URL}/login`
-    }
-  ),
+  passport.authenticate("google", {
+    failureRedirect: `${FRONTEND_URL}/login`
+  }),
 
-  (
-    req,
-    res
-  ) => {
-    res.redirect(
-      `${FRONTEND_URL}/dashboard`
-    );
+  (req, res) => {
+    res.redirect(`${FRONTEND_URL}/dashboard`);
   }
 );
 
 app.get(
   "/auth/me",
 
-  (
-    req: any,
-    res: Response
-  ) => {
+  (req: any, res: Response) => {
     if (!req.user) {
       return res.status(401).json({
         authenticated: false
@@ -276,49 +199,35 @@ app.get(
 app.post(
   "/auth/logout",
 
-  (
-    req: any,
-    res: Response
-  ) => {
-    req.logout(
-      (error: any) => {
-        if (error) {
-          return res.status(500).json({
-            message:
-              "Logout failed"
-          });
-        }
-
-        req.session.destroy(() => {
-          res.clearCookie(
-            "connect.sid"
-          );
-
-          res.json({
-            message:
-              "Logged out successfully"
-          });
+  (req: any, res: Response) => {
+    req.logout((error: any) => {
+      if (error) {
+        return res.status(500).json({
+          message: "Logout failed"
         });
       }
-    );
+
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid");
+
+        res.json({
+          message: "Logged out successfully"
+        });
+      });
+    });
   }
 );
 
 /* =========================
-   HEALTH CHECK
+   HEALTH
 ========================= */
 
 app.get(
   "/health",
 
-  async (
-    req: Request,
-    res: Response
-  ) => {
+  async (req: Request, res: Response) => {
     try {
-      await pool.query(
-        "SELECT 1"
-      );
+      await pool.query("SELECT 1");
 
       res.json({
         status: "ok",
@@ -327,35 +236,25 @@ app.get(
     } catch (error) {
       res.status(500).json({
         status: "error",
-        message:
-          "Database is not connected"
+        message: "Database is not connected"
       });
     }
   }
 );
 
-/* =========================
-   TEST DATABASE
-========================= */
-
 app.get(
   "/test-db",
 
-  async (
-    req: Request,
-    res: Response
-  ) => {
+  async (req: Request, res: Response) => {
     try {
-      const result =
-        await pool.query(
-          "SELECT NOW()"
-        );
+      const result = await pool.query(
+        "SELECT NOW()"
+      );
 
       res.json({
         message:
           "Database connected successfully!",
-        time:
-          result.rows[0].now
+        time: result.rows[0].now
       });
     } catch (error) {
       console.error(
@@ -372,16 +271,13 @@ app.get(
 );
 
 /* =========================
-   CREATE SINGLE EMAIL
+   SCHEDULE SINGLE EMAIL
 ========================= */
 
 app.post(
   "/emails",
 
-  async (
-    req: Request,
-    res: Response
-  ) => {
+  async (req: Request, res: Response) => {
     try {
       const {
         recipient_email,
@@ -399,19 +295,15 @@ app.post(
       ) {
         return res.status(400).json({
           message:
-            "All fields are required"
+            "All required fields must be provided"
         });
       }
 
       const scheduledDate =
-        new Date(
-          scheduled_time
-        );
+        new Date(scheduled_time);
 
       if (
-        isNaN(
-          scheduledDate.getTime()
-        )
+        isNaN(scheduledDate.getTime())
       ) {
         return res.status(400).json({
           message:
@@ -419,82 +311,39 @@ app.post(
         });
       }
 
-      const delay =
-        scheduledDate.getTime() -
-        Date.now();
-
-      if (delay < 0) {
+      if (
+        scheduledDate.getTime() <= Date.now()
+      ) {
         return res.status(400).json({
           message:
             "Scheduled time must be in the future"
         });
       }
 
-      const result =
-        await pool.query(
-          `
-          INSERT INTO emails
-          (
-            recipient_email,
-            sender_email,
-            subject,
-            body,
-            scheduled_time,
-            status
-          )
-          VALUES
-          (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            'scheduled'
-          )
-          RETURNING *
-          `,
-          [
-            recipient_email,
-            sender_email || null,
-            subject,
-            body,
-            scheduledDate
-          ]
-        );
-
-      const email =
-        result.rows[0];
-
-      await runWithTimeout(
-        emailQueue.add(
-          "send-email",
-          {
-            emailId:
-              email.id
-          },
-          {
-            delay:
-              Math.max(
-                delay,
-                0
-              ),
-
-            jobId:
-              `email-${email.id}`,
-
-            attempts: 3,
-
-            backoff: {
-              type:
-                "exponential",
-
-              delay:
-                5000
-            }
-          }
-        ),
-        2000
+      const result = await pool.query(
+        `
+        INSERT INTO emails
+        (
+          recipient_email,
+          sender_email,
+          subject,
+          body,
+          scheduled_time,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, 'scheduled')
+        RETURNING *
+        `,
+        [
+          recipient_email,
+          sender_email || null,
+          subject,
+          body,
+          scheduledDate
+        ]
       );
+
+      const email = result.rows[0];
 
       res.status(201).json({
         message:
@@ -522,10 +371,7 @@ app.post(
 app.post(
   "/emails/bulk",
 
-  async (
-    req: Request,
-    res: Response
-  ) => {
+  async (req: Request, res: Response) => {
     try {
       const {
         emails,
@@ -550,14 +396,10 @@ app.post(
       }
 
       const startDate =
-        new Date(
-          start_time
-        );
+        new Date(start_time);
 
       if (
-        isNaN(
-          startDate.getTime()
-        )
+        isNaN(startDate.getTime())
       ) {
         return res.status(400).json({
           message:
@@ -565,10 +407,17 @@ app.post(
         });
       }
 
+      if (
+        startDate.getTime() <= Date.now()
+      ) {
+        return res.status(400).json({
+          message:
+            "Start time must be in the future"
+        });
+      }
+
       const delayBetween =
-        Number(
-          delay_between_emails
-        ) ||
+        Number(delay_between_emails) ||
         Number(
           process.env.MIN_EMAIL_DELAY_MS
         ) ||
@@ -582,9 +431,7 @@ app.post(
         i++
       ) {
         const recipient =
-          String(
-            emails[i]
-          ).trim();
+          String(emails[i]).trim();
 
         if (!recipient) {
           continue;
@@ -596,88 +443,39 @@ app.post(
             i * delayBetween
           );
 
-        const result =
-          await pool.query(
-            `
-            INSERT INTO emails
-            (
-              recipient_email,
-              sender_email,
-              subject,
-              body,
-              scheduled_time,
-              status
-            )
-            VALUES
-            (
-              $1,
-              $2,
-              $3,
-              $4,
-              $5,
-              'scheduled'
-            )
-            RETURNING *
-            `,
-            [
-              recipient,
-              sender_email || null,
-              subject,
-              body,
-              scheduledTime
-            ]
-          );
-
-        const email =
-          result.rows[0];
-
-        const jobDelay =
-          scheduledTime.getTime() -
-          Date.now();
-
-        await runWithTimeout(
-          emailQueue.add(
-            "send-email",
-            {
-              emailId:
-                email.id
-            },
-            {
-              delay:
-                Math.max(
-                  jobDelay,
-                  0
-                ),
-
-              jobId:
-                `email-${email.id}`,
-
-              attempts: 3,
-
-              backoff: {
-                type:
-                  "exponential",
-
-                delay:
-                  5000
-              }
-            }
-          ),
-          2000
+        const result = await pool.query(
+          `
+          INSERT INTO emails
+          (
+            recipient_email,
+            sender_email,
+            subject,
+            body,
+            scheduled_time,
+            status
+          )
+          VALUES ($1, $2, $3, $4, $5, 'scheduled')
+          RETURNING *
+          `,
+          [
+            recipient,
+            sender_email || null,
+            subject,
+            body,
+            scheduledTime
+          ]
         );
 
         createdEmails.push(
-          email
+          result.rows[0]
         );
       }
 
       res.status(201).json({
         message:
           `${createdEmails.length} emails scheduled successfully`,
-
         count:
           createdEmails.length,
-
         emails:
           createdEmails
       });
@@ -702,23 +500,18 @@ app.post(
 app.get(
   "/emails",
 
-  async (
-    req: Request,
-    res: Response
-  ) => {
+  async (req: Request, res: Response) => {
     try {
-      const result =
-        await pool.query(
-          `
-          SELECT *
-          FROM emails
-          ORDER BY scheduled_time ASC
-          `
-        );
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM emails
+        ORDER BY scheduled_time ASC
+        `
+      );
 
       res.json({
-        emails:
-          result.rows
+        emails: result.rows
       });
     } catch (error) {
       console.error(
@@ -746,19 +539,17 @@ app.get(
     res: Response
   ) => {
     try {
-      const result =
-        await pool.query(
-          `
-          SELECT *
-          FROM emails
-          WHERE status = 'scheduled'
-          ORDER BY scheduled_time ASC
-          `
-        );
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM emails
+        WHERE status = 'scheduled'
+        ORDER BY scheduled_time ASC
+        `
+      );
 
       res.json({
-        emails:
-          result.rows
+        emails: result.rows
       });
     } catch (error) {
       console.error(
@@ -786,23 +577,17 @@ app.get(
     res: Response
   ) => {
     try {
-      const result =
-        await pool.query(
-          `
-          SELECT *
-          FROM emails
-          WHERE status IN
-          (
-            'sent',
-            'failed'
-          )
-          ORDER BY sent_time DESC NULLS LAST
-          `
-        );
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM emails
+        WHERE status IN ('sent', 'failed')
+        ORDER BY sent_time DESC NULLS LAST
+        `
+      );
 
       res.json({
-        emails:
-          result.rows
+        emails: result.rows
       });
     } catch (error) {
       console.error(
@@ -831,9 +616,7 @@ app.delete(
   ) => {
     try {
       const id =
-        Number(
-          req.params.id
-        );
+        Number(req.params.id);
 
       const result =
         await pool.query(
@@ -856,8 +639,7 @@ app.delete(
       }
 
       if (
-        email.status !==
-        "scheduled"
+        email.status !== "scheduled"
       ) {
         return res.status(400).json({
           message:
@@ -865,33 +647,12 @@ app.delete(
         });
       }
 
-      const job =
-        await runWithTimeout(
-          emailQueue.getJob(
-            `email-${id}`
-          ),
-          2000
-        );
-
-      if (job) {
-        try {
-          await runWithTimeout(
-            job.remove(),
-            2000
-          );
-        } catch (err) {
-          console.warn(
-            "Failed to remove job:",
-            err
-          );
-        }
-      }
-
       await pool.query(
         `
         UPDATE emails
         SET status = 'cancelled'
         WHERE id = $1
+          AND status = 'scheduled'
         `,
         [id]
       );
@@ -902,7 +663,7 @@ app.delete(
       });
     } catch (error) {
       console.error(
-        "Cancel email error:",
+        "Failed to cancel email:",
         error
       );
 
@@ -915,32 +676,38 @@ app.delete(
 );
 
 /* =========================
-   FALLBACK POSTGRES WORKER
+   POSTGRES EMAIL WORKER
 ========================= */
 
+let workerRunning = false;
+
 async function postgresFallbackWorker() {
+  if (workerRunning) {
+    return;
+  }
+
+  workerRunning = true;
+
   try {
-    const result =
-      await pool.query(
-        `
-        SELECT *
-        FROM emails
-        WHERE status = 'scheduled'
-          AND scheduled_time <= CURRENT_TIMESTAMP
-        ORDER BY scheduled_time ASC
-        LIMIT 10
-        `
-      );
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM emails
+      WHERE status = 'scheduled'
+        AND scheduled_time <= CURRENT_TIMESTAMP
+      ORDER BY scheduled_time ASC
+      LIMIT 10
+      `
+    );
 
     for (
       const email of result.rows
     ) {
-      const emailId =
-        email.id;
+      const emailId = email.id;
 
       try {
         console.log(
-          `[Fallback Worker] Processing email ${emailId} to ${email.recipient_email}`
+          `[Email Worker] Processing email ${emailId} to ${email.recipient_email}`
         );
 
         const updateResult =
@@ -961,137 +728,91 @@ async function postgresFallbackWorker() {
           continue;
         }
 
-        /*
-         IMPORTANT:
-         Do not use "default" as sender.
-         getTransporter should receive
-         the actual sender email or null.
-        */
-
-        const sender =
-          email.sender_email ||
-          process.env.EMAIL_USER ||
-          process.env.SMTP_USER;
-
-        if (!sender) {
-          throw new Error(
-            "No sender email configured"
-          );
-        }
-
         const {
           transporter,
           account
         } =
-          await getTransporter(
-            sender
-          );
+          await getTransporter();
 
-        await transporter.sendMail({
-          from:
-            `${sender} <${account.user}>`,
+        console.log(
+          `[Email Worker] Sending email ${emailId}`
+        );
 
-          to:
-            email.recipient_email,
-
-          subject:
-            email.subject,
-
-          text:
-            email.body
-        });
+        const info =
+          await transporter.sendMail({
+            from: `"EmailFlow" <${account.user}>`,
+            to: email.recipient_email,
+            subject: email.subject,
+            text: email.body
+          });
 
         await pool.query(
           `
           UPDATE emails
           SET
             status = 'sent',
-            sent_time = CURRENT_TIMESTAMP,
-            error_message = NULL
+            sent_time = CURRENT_TIMESTAMP
           WHERE id = $1
           `,
           [emailId]
         );
 
         console.log(
-          `[Fallback Worker] Email ${emailId} successfully sent`
-        );
-      } catch (err: any) {
-        console.error(
-          `[Fallback Worker] Failed email ${emailId}:`,
-          err.message
+          `[Email Worker] Email ${emailId} sent successfully`
         );
 
-        /*
-         Use error_message instead of
-         failed_reason
-        */
+        console.log(
+          "Ethereal preview:",
+          nodemailer.getTestMessageUrl(info)
+        );
+
+      } catch (err: any) {
+        console.error(
+          `[Email Worker] Failed email ${emailId}:`,
+          err.message
+        );
 
         await pool.query(
           `
           UPDATE emails
-          SET
-            status = 'failed',
-            error_message = $2
+          SET status = 'failed'
           WHERE id = $1
           `,
-          [
-            emailId,
-            err.message ||
-              "Unknown error"
-          ]
+          [emailId]
         );
       }
     }
   } catch (err: any) {
     console.error(
-      "[Fallback Worker] Database polling error:",
+      "[Email Worker] Error:",
       err.message
     );
+  } finally {
+    workerRunning = false;
   }
 }
 
 /* =========================
-   START SERVER
+   START SERVER + WORKER
 ========================= */
 
-app.listen(
-  PORT,
-  () => {
-    console.log(
-      `Server running on port ${PORT}`
-    );
+const PORT =
+  Number(process.env.PORT) ||
+  5000;
 
-    /*
-     Start the BullMQ worker
-    */
+app.listen(PORT, () => {
+  console.log(
+    `Server running on port ${PORT}`
+  );
 
-    import("./worker")
-      .then(() => {
-        console.log(
-          "Background email queue worker started."
-        );
-      })
-      .catch(
-        (err) => {
-          console.error(
-            "Failed to start queue worker:",
-            err
-          );
-        }
-      );
+  console.log(
+    "PostgreSQL email worker started."
+  );
 
-    /*
-     Run fallback worker every 5 seconds
-    */
+  postgresFallbackWorker();
 
-    setInterval(
-      postgresFallbackWorker,
-      5000
-    );
-
-    console.log(
-      "PostgreSQL fallback worker started."
-    );
-  }
-);
+  setInterval(
+    postgresFallbackWorker,
+    5000
+  );
+});
